@@ -1,7 +1,7 @@
 # Imagen única para local y Azure. SQL Server / Azure SQL es el único motor de persistencia,
 # así que el driver ODBC de Microsoft (unixodbc + msodbcsql18) se instala siempre.
 #
-#   docker build -t <usuario>/senti-notificacion-ms:1 .
+#   docker build -t <usuario>/senti_notificacion_ms:1 .
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

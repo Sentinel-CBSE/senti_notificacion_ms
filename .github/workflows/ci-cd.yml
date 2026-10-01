@@ -1,0 +1,64 @@
+name: CI/CD - senti_notificacion_ms
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+
+  # ============================================================
+  # JOB 1: Build & Push Docker Image
+  # ============================================================
+  build-and-push:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    environment: senti_dockerhub
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ vars.DOCKERHUB_USERNAME }}/senti_notificacion_ms:${{ github.sha }} \
+            -t ${{ vars.DOCKERHUB_USERNAME }}/senti_notificacion_ms:latest \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push \
+            ${{ vars.DOCKERHUB_USERNAME }}/senti_notificacion_ms:${{ github.sha }}
+
+          docker push \
+            ${{ vars.DOCKERHUB_USERNAME }}/senti_notificacion_ms:latest
+
+
+  # ============================================================
+  # JOB 2: Trigger Infrastructure Pipeline
+  # ============================================================
+  trigger-infra:
+    name: Trigger infrastructure pipeline
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: senti_infra
+
+    steps:
+      - name: Trigger deployment
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/Sentinel-CBSE/senti_infra/dispatches \
+            -f event_type='deploy' \
+            -f client_payload[service]='senti_notificacion_ms' \
+            -f client_payload[tag]='${{ github.sha }}'
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}

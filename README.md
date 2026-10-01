@@ -152,8 +152,8 @@ El mismo código; solo cambian variables de entorno.
 
 1. **Imagen**: build + push a Docker Hub (repositorio privado recomendado; si es privado, el Container App necesita el registry secret). Usa siempre una etiqueta de versión, no `latest`.
    ```bash
-   docker build -t <usuario>/senti-notificacion-ms:1 .
-   docker push <usuario>/senti-notificacion-ms:1
+   docker build -t <usuario>/senti_notificacion_ms:1 .
+   docker push <usuario>/senti_notificacion_ms:1
    ```
 2. **Azure SQL**: crea la base y ejecuta `db/01-device-tokens.sql` contra ella (`sqlcmd -S <servidor>.database.windows.net -d <base> -U <user> -P <pass> -G -i db/01-device-tokens.sql`). La app no crea tablas; su usuario solo necesita `db_datareader` + `db_datawriter`.
 3. **Container App**: ingress externo puerto 8000, mínimo 1 réplica (el worker debe estar siempre escuchando), probes de liveness/readiness en `/health`.
