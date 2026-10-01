@@ -1,0 +1,86 @@
+# Entorno local completo: SQL Server real + init de esquema + emulador de Service Bus + API.
+#   docker compose up -d --build
+# Las variables (DB_*, FIREBASE_*, ...) se leen de .env (ver .env.example).
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT:-1433}:1433" # para conectarte desde el host (sqlcmd, Azure Data Studio, uvicorn local)
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # Corre una sola vez: crea la base (solo local) y la tabla, y termina. Es idempotente.
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest # se reutiliza por su sqlcmd; no arranca el servidor
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE: ${DB_DATABASE}
+    volumes:
+      - ./db:/db:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        run_sql() { /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$$DB_PASSWORD" -b "$$@"; }
+        run_sql -d master -v DB_DATABASE="$$DB_DATABASE" -i /db/00-create-database.sql
+        run_sql -d "$$DB_DATABASE" -i /db/01-device-tokens.sql
+        echo "db-init OK"
+
+  # Emulador de Azure Service Bus (usa el mismo SQL Server para su metadata interna).
+  servicebus:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    ports:
+      - "5672:5672" # AMQP
+      - "5300:5300" # health del emulador
+    environment:
+      ACCEPT_EULA: "Y"
+      SQL_SERVER: sqlserver
+      MSSQL_SA_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./servicebus-emulator/Config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+
+  api:
+    build: .
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      servicebus:
+        condition: service_started
+    env_file: .env
+    environment:
+      # Dentro de la red de Docker los servicios se llaman por su nombre, nunca "localhost".
+      DB_HOST: sqlserver
+      DB_PORT: "1433"
+      SERVICEBUS_CONNECTION_STRING: "Endpoint=sb://servicebus;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+      FIREBASE_CREDENTIALS_PATH: /secrets/${FIREBASE_CREDENTIALS_FILE:-firebase-service-account.json}
+    volumes:
+      - ./secrets:/secrets:ro
+    ports:
+      - "8000:8000"
+    # Solo para local (docker compose ps -> healthy). En Azure los probes de /health se configuran
+    # en el Container App. urlopen lanza excepción con 503 (worker caído), y eso marca unhealthy.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  sqlserver-data:
