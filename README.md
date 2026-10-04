@@ -63,6 +63,20 @@ Decisiones de comportamiento del worker:
 
 `/health` devuelve 503 si el worker está habilitado pero murió, para que Container Apps reinicie la réplica.
 
+## Evento de registro de FID (entrada HTTP)
+
+El API Gateway publica en Event Grid (tema `senti-eventos-mq`) un evento por cada `POST notification/registerInstallationId` de la app móvil, y Event Grid lo entrega a `POST /notifications/fid`:
+
+```json
+[{
+  "id": "<guid>", "eventType": "Sentinel.InstallationIdActualizado",
+  "subject": "usuarios/<uid>", "eventTime": "<ISO 8601>", "dataVersion": "1.0",
+  "data": { "installationId": "<FID>", "userId": "<uid del token de Firebase>" }
+}]
+```
+
+En `data` se aceptan `fid` o `installationId` para el FID, y `user_id` o `userId` para el usuario. El mismo evento cubre el alta y la rotación de FID (upsert). Se sigue aceptando el nombre de tipo anterior, `Sentinel.Notification.FidRegisteredOrUpdated`. Cualquier otro tipo de evento del tema se ignora (200, sin guardar). La suscripción de Event Grid debe filtrar por `Sentinel.InstallationIdActualizado`.
+
 ## Variables de entorno
 
 Se leen de `.env` en local y de variables reales en Azure (ver `.env.example`).
@@ -139,7 +153,7 @@ curl -X POST localhost:8000/notifications/fid -H 'Content-Type: application/json
   -d '[{"eventType":"Microsoft.EventGrid.SubscriptionValidationEvent","data":{"validationCode":"abc"}}]'
 # registro / actualización de FID (mismo evento para ambos casos)
 curl -X POST localhost:8000/notifications/fid -H 'Content-Type: application/json' \
-  -d '[{"id":"1","eventType":"Sentinel.Notification.FidRegisteredOrUpdated","data":{"user_id":"user-1","fid":"FID"},"dataVersion":"1.0"}]'
+  -d '[{"id":"1","eventType":"Sentinel.InstallationIdActualizado","data":{"userId":"user-1","installationId":"FID"},"dataVersion":"1.0"}]'
 # ver la fila en SQL Server
 docker compose exec sqlserver bash -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d senti_notificacion -Q "SELECT * FROM dbo.device_tokens"'
 ```

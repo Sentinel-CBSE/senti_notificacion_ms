@@ -10,7 +10,11 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-FID_EVENT_TYPE = "Sentinel.Notification.FidRegisteredOrUpdated"
+# Tipo de evento que publica el API Gateway (convención del equipo: Sentinel.<Algo>Actualizado).
+FID_EVENT_TYPE = "Sentinel.InstallationIdActualizado"
+# Nombre anterior del contrato; nadie lo publica hoy, pero se sigue aceptando por compatibilidad.
+LEGACY_FID_EVENT_TYPE = "Sentinel.Notification.FidRegisteredOrUpdated"
+ACCEPTED_FID_EVENT_TYPES = frozenset({FID_EVENT_TYPE, LEGACY_FID_EVENT_TYPE})
 VALIDATION_EVENT_TYPE = "Microsoft.EventGrid.SubscriptionValidationEvent"
 
 
@@ -43,7 +47,8 @@ class FidRegistrationData(BaseModel):
     # política del API Gateway, pero el schema documentado en /openapi.json sigue mostrando
     # el nombre canónico "user_id" (alias solo afectaría también a la salida/doc).
     user_id: str = Field(min_length=1, validation_alias=AliasChoices("user_id", "userId"))
-    fid: str = Field(min_length=1)
+    # El gateway reenvía el cuerpo de la app móvil tal cual, cuyo campo se llama `installationId`.
+    fid: str = Field(min_length=1, validation_alias=AliasChoices("fid", "installationId"))
 
 
 # --- Modelos SOLO para documentación OpenAPI ---
@@ -68,7 +73,7 @@ class FidRegisteredEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str | None = None
-    event_type: Literal["Sentinel.Notification.FidRegisteredOrUpdated"] = Field(alias="eventType")
+    event_type: Literal["Sentinel.InstallationIdActualizado"] = Field(alias="eventType")
     data: FidRegistrationData
     data_version: str | None = Field(default=None, alias="dataVersion")
 

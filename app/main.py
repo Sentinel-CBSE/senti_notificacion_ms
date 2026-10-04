@@ -24,6 +24,8 @@ from app.servicebus_listener import ServiceBusListener
 
 logger = logging.getLogger(__name__)
 
+_STARTUP_DB_TIMEOUT_SECONDS = 150
+
 # El pool por defecto de asyncio.to_thread (min(32, cpus+4)) es muy chico frente a un lote
 # del worker: cada mensaje dispara 2 llamadas bloqueantes (BD + Firebase). Se dimensiona a
 # partir de SERVICEBUS_BATCH_SIZE (tope real) + margen para requests HTTP concurrentes.
@@ -48,9 +50,10 @@ def create_app(
         logger.info("Thread pool dimensionado", extra={"max_workers": max_workers})
 
         device_repo = repo or build_repository(settings)
-        # Si la primera conexión se cuelga (red o BD no responden), falla el arranque en vez
-        # de dejar el contenedor colgado para siempre sin que ningún healthcheck lo detecte.
-        await asyncio.wait_for(device_repo.verify_schema(), timeout=20)
+        # verify_schema reintenta por su cuenta (~2 min) si la BD serverless está reanudándose.
+        # Este tope es solo la red de seguridad: si algo se cuelga más allá de eso, falla el
+        # arranque en vez de dejar el contenedor colgado sin que ningún healthcheck lo detecte.
+        await asyncio.wait_for(device_repo.verify_schema(), timeout=_STARTUP_DB_TIMEOUT_SECONDS)
         app.state.repo = device_repo
         app.state.listener_task = None
 

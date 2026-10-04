@@ -119,3 +119,46 @@ async def test_unknown_incident_still_sends_with_fallback_title() -> None:
 async def test_invalid_message_raises_contract_error(raw: str) -> None:
     with pytest.raises(ContractError):
         await process_incident_message(raw, FakeRepository(), FakeSender())
+
+
+# --- Evento tal como lo arma la política del API Gateway ---
+
+GATEWAY_EVENT = {
+    "id": "1b9c1e0e-0000-4000-8000-000000000001",
+    "eventType": "Sentinel.InstallationIdActualizado",
+    "subject": "usuarios/gw-user-1",
+    "eventTime": "2026-10-04T15:00:00.0000000Z",
+    "dataVersion": "1.0",
+    "data": {"installationId": "gw-fid-1", "userId": "gw-user-1"},
+}
+
+
+async def test_gateway_event_saves_fid_using_installation_id_and_user_id() -> None:
+    repo = FakeRepository()
+    assert await handle_event_grid_payload([GATEWAY_EVENT], repo) == {"processed": 1}
+    assert repo.rows == {"gw-user-1": "gw-fid-1"}
+
+
+async def test_gateway_event_rotation_overwrites_previous_fid() -> None:
+    repo = FakeRepository({"gw-user-1": "viejo"})
+    await handle_event_grid_payload([GATEWAY_EVENT], repo)
+    assert repo.rows == {"gw-user-1": "gw-fid-1"}
+
+
+async def test_previous_event_type_name_is_still_accepted() -> None:
+    repo = FakeRepository()
+    legacy = {**GATEWAY_EVENT, "eventType": "Sentinel.Notification.FidRegisteredOrUpdated"}
+    assert await handle_event_grid_payload([legacy], repo) == {"processed": 1}
+
+
+async def test_other_event_types_of_the_shared_topic_are_ignored() -> None:
+    repo = FakeRepository()
+    foreign = {**GATEWAY_EVENT, "eventType": "Sentinel.IncidenteReportado"}
+    assert await handle_event_grid_payload([foreign], repo) == {"processed": 0}
+    assert repo.rows == {}
+
+
+async def test_gateway_event_without_installation_id_is_a_contract_error() -> None:
+    bad = {**GATEWAY_EVENT, "data": {"userId": "gw-user-1"}}
+    with pytest.raises(ContractError):
+        await handle_event_grid_payload([bad], FakeRepository())

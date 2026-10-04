@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.models import (
-    FID_EVENT_TYPE,
+    ACCEPTED_FID_EVENT_TYPES,
     VALIDATION_EVENT_TYPE,
     IncidentAlertMessage,
     parse_event_grid_payload,
@@ -45,7 +45,7 @@ async def handle_event_grid_payload(raw_payload: Any, repo: DeviceRepository) ->
 
     processed = 0
     for event in events:
-        if event.event_type == FID_EVENT_TYPE:
+        if event.event_type in ACCEPTED_FID_EVENT_TYPES:
             data = parse_fid_registration(event)
             await repo.upsert_fid(data.user_id, data.fid)
             logger.info("FID guardado", extra={"user_id": data.user_id, "event_id": event.id})

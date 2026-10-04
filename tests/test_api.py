@@ -78,3 +78,21 @@ def test_endpoints_keep_working_in_production(repo: FakeRepository) -> None:
         assert c.get("/health").status_code == 200
         assert c.post("/notifications/fid", json=FID_EVENT).status_code == 200
         assert repo.rows == {"u1": "fid-A"}
+
+
+def test_gateway_shaped_event_over_http_upserts(client: TestClient, repo: FakeRepository) -> None:
+    """Evento exactamente como lo publica el API Gateway, con los campos extra de Event Grid."""
+    event = {
+        "id": "e-gw",
+        "topic": "/subscriptions/x/resourceGroups/rg/providers/Microsoft.EventGrid/topics/senti-eventos-mq",
+        "eventType": "Sentinel.InstallationIdActualizado",
+        "subject": "usuarios/gw-user",
+        "eventTime": "2026-10-04T15:00:00Z",
+        "dataVersion": "1.0",
+        "metadataVersion": "1",
+        "data": {"installationId": "gw-fid", "userId": "gw-user"},
+    }
+    response = client.post("/notifications/fid", json=[event])
+    assert response.status_code == 200
+    assert response.json() == {"processed": 1}
+    assert repo.rows == {"gw-user": "gw-fid"}

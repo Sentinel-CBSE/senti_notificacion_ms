@@ -126,3 +126,14 @@ def test_invalid_values_are_rejected(override: dict[str, object]) -> None:
 def test_old_or_malformed_contract_is_rejected(raw: str) -> None:
     with pytest.raises(ContractError):
         parse_incident_message(raw)
+
+
+def test_fid_registration_accepts_installation_id_as_the_fid_field() -> None:
+    event = parse_event_grid_payload([{"eventType": "t", "data": {"userId": "u1", "installationId": "f1"}}])[0]
+    data = parse_fid_registration(event)
+    assert (data.user_id, data.fid) == ("u1", "f1")
+
+
+def test_fid_field_takes_precedence_over_installation_id() -> None:
+    event = parse_event_grid_payload([{"eventType": "t", "data": {"user_id": "u1", "fid": "A", "installationId": "B"}}])[0]
+    assert parse_fid_registration(event).fid == "A"
